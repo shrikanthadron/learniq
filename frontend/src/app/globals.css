@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --accent: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+}
+
+.dark {
+  --bg-primary: #0b0f1a;
+  --bg-secondary: #111827;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --glass-bg: rgba(17, 24, 39, 0.75);
+  --glass-border: rgba(99, 102, 241, 0.2);
+  --accent: #818cf8;
+  --accent-glow: rgba(129, 140, 248, 0.25);
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+@layer components {
+  .glass {
+    @apply backdrop-blur-xl border shadow-xl;
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl p-6 transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-500 via-purple-500 to-cyan-500;
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-brand-500 to-purple-600
+           hover:from-brand-600 hover:to-purple-700 transition-all shadow-lg shadow-brand-500/30
+           active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 rounded-xl font-semibold glass hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl glass border-0 focus:ring-2 focus:ring-brand-500 outline-none
+           bg-white/50 dark:bg-gray-900/50 text-[var(--text-primary)] placeholder:text-[var(--text-secondary)];
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-[var(--text-secondary)]
+           hover:bg-brand-500/10 hover:text-brand-500 transition-all;
+  }
+
+  .sidebar-link.active {
+    @apply bg-brand-500/15 text-brand-500 font-semibold;
+  }
+}
+
+.mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(99, 102, 241, 0.25), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 0%, rgba(6, 182, 212, 0.2), transparent),
+    radial-gradient(ellipse 50% 30% at 50% 100%, rgba(139, 92, 246, 0.15), transparent),
+    var(--bg-primary);
+}
+
+.progress-bar {
+  @apply h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden;
+}
+
+.progress-fill {
+  @apply h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-500 transition-all duration-700;
+}
