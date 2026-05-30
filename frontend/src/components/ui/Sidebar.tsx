@@ -2,32 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard, Brain, Calendar, BarChart3, BookOpen,
-  Settings, Shield, LogOut, Moon, Sun, Zap, FileText, Trophy,
-} from "lucide-react";
+import { Settings, LogOut, Moon, Sun, Zap, X } from "lucide-react";
+import clsx from "clsx";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import clsx from "clsx";
-
-const studentLinks = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/quizzes", label: "Quizzes", icon: Brain },
-  { href: "/planner", label: "Planner", icon: Calendar },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/notes", label: "Notes", icon: FileText },
-  { href: "/subjects", label: "Subjects", icon: BookOpen },
-  { href: "/achievements", label: "Achievements", icon: Trophy },
-];
+import { getNavLinks } from "@/lib/nav-links";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
-
-  const links = user?.role === "ADMIN" || user?.role === "TEACHER"
-    ? [...studentLinks, { href: "/admin", label: "Admin", icon: Shield }]
-    : studentLinks;
+  const links = getNavLinks(user?.role);
 
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen glass border-r border-[var(--glass-border)] p-4">
