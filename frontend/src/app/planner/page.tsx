@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Calendar, Plus, Timer, Sparkles, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Plus, Timer, Sparkles, Pencil, Trash2, Bell, Volume2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getRangeForView, PlannerViewMode } from "@/lib/planner-utils";
+import { requestNotificationPermission, playTimerCompleteSound, showBrowserNotification } from "@/lib/pomodoro-alerts";
 import { DashboardLayout } from "@/components/ui/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { EventModal, PlannerEventForm } from "@/components/planner/EventModal";
@@ -29,7 +30,32 @@ export default function PlannerPage() {
   const [pomodoroMin, setPomodoroMin] = useState(25);
   const [pomodoroLeft, setPomodoroLeft] = useState(0);
   const [pomodoroActive, setPomodoroActive] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [error, setError] = useState("");
+  const pomodoroMinRef = useRef(pomodoroMin);
+  const completedRef = useRef(false);
+
+  pomodoroMinRef.current = pomodoroMin;
+
+  const completePomodoro = useCallback(async () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    const minutes = pomodoroMinRef.current;
+    if (notifyEnabled) await requestNotificationPermission();
+    if (soundEnabled) playTimerCompleteSound();
+    if (notifyEnabled) {
+      showBrowserNotification(
+        "Focus session complete!",
+        `Great work — you focused for ${minutes} minute${minutes === 1 ? "" : "s"}.`
+      );
+    }
+    try {
+      await api("/planner/pomodoro", { method: "POST", body: JSON.stringify({ durationMin: minutes }) });
+    } catch {
+      /* session log optional */
+    }
+  }, [soundEnabled, notifyEnabled]);
 
   const loadEvents = useCallback(async () => {
     const { from, to } = getRangeForView(view, anchor);
@@ -52,13 +78,14 @@ export default function PlannerPage() {
       setPomodoroLeft((s) => {
         if (s <= 1) {
           setPomodoroActive(false);
+          completePomodoro();
           return 0;
         }
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [pomodoroActive, pomodoroLeft]);
+  }, [pomodoroActive, pomodoroLeft, completePomodoro]);
 
   const saveEvent = async (data: PlannerEventForm) => {
     if (data.id) {
@@ -112,9 +139,25 @@ export default function PlannerPage() {
   };
 
   const startPomodoro = () => {
-    setPomodoroLeft(pomodoroMin * 60);
+    completedRef.current = false;
+    if (pomodoroLeft <= 0) setPomodoroLeft(pomodoroMin * 60);
     setPomodoroActive(true);
-    api("/planner/pomodoro", { method: "POST", body: JSON.stringify({ durationMin: pomodoroMin }) }).catch(() => {});
+  };
+
+  const resetPomodoro = () => {
+    setPomodoroActive(false);
+    setPomodoroLeft(0);
+    completedRef.current = false;
+  };
+
+  const formatPomodoroDisplay = (totalSec: number) => {
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) {
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
   const formatDate = (iso: string) =>
@@ -243,28 +286,75 @@ export default function PlannerPage() {
 
             <div className="glass-card text-center h-fit">
               <Timer className="w-10 h-10 text-brand-500 mx-auto mb-4" />
-              <h2 className="font-semibold text-lg mb-2">Pomodoro Focus</h2>
+              <h2 className="font-semibold text-lg mb-2">Focus Timer</h2>
               <p className="text-4xl font-mono font-bold gradient-text mb-4">
-                {String(Math.floor(pomodoroLeft / 60)).padStart(2, "0")}:
-                {String(pomodoroLeft % 60).padStart(2, "0")}
+                {formatPomodoroDisplay(pomodoroLeft > 0 ? pomodoroLeft : pomodoroMin * 60)}
               </p>
-              <select
-                value={pomodoroMin}
-                onChange={(e) => setPomodoroMin(Number(e.target.value))}
-                className="input-field mb-4 text-center"
-                disabled={pomodoroActive}
-              >
-                <option value={25}>25 min</option>
-                <option value={45}>45 min</option>
-                <option value={15}>15 min</option>
-              </select>
-              <button
-                type="button"
-                onClick={pomodoroActive ? () => setPomodoroActive(false) : startPomodoro}
-                className="btn-primary w-full"
-              >
-                {pomodoroActive ? "Pause" : "Start Focus"}
-              </button>
+
+              <div className="mb-4 text-left">
+                <label className="text-xs text-[var(--text-secondary)] block mb-2">
+                  Duration: {pomodoroMin < 60 ? `${pomodoroMin} min` : `${Math.floor(pomodoroMin / 60)}h ${pomodoroMin % 60 ? `${pomodoroMin % 60}m` : ""}`}
+                  <span className="float-right">max 5 hrs</span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={300}
+                  value={pomodoroMin}
+                  onChange={(e) => setPomodoroMin(Number(e.target.value))}
+                  disabled={pomodoroActive}
+                  className="w-full accent-brand-500"
+                />
+                <div className="flex gap-2 mt-2">
+                  {[15, 25, 45, 60, 120].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={pomodoroActive}
+                      onClick={() => setPomodoroMin(m)}
+                      className={`flex-1 text-xs py-1 rounded-lg ${pomodoroMin === m ? "bg-brand-500 text-white" : "bg-brand-500/10 text-brand-500"}`}
+                    >
+                      {m < 60 ? `${m}m` : `${m / 60}h`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-center gap-4 mb-4 text-sm">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={soundEnabled}
+                    onChange={(e) => setSoundEnabled(e.target.checked)}
+                    className="accent-brand-500"
+                  />
+                  <Volume2 className="w-4 h-4" /> Sound
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifyEnabled}
+                    onChange={(e) => setNotifyEnabled(e.target.checked)}
+                    className="accent-brand-500"
+                  />
+                  <Bell className="w-4 h-4" /> Notify
+                </label>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={pomodoroActive ? () => setPomodoroActive(false) : startPomodoro}
+                  className="btn-primary flex-1"
+                >
+                  {pomodoroActive ? "Pause" : pomodoroLeft > 0 ? "Resume" : "Start Focus"}
+                </button>
+                {(pomodoroActive || pomodoroLeft > 0) && (
+                  <button type="button" onClick={resetPomodoro} className="btn-secondary px-4">
+                    Reset
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

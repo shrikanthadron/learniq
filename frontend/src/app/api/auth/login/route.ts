@@ -1,21 +1,29 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { signToken, userSelect } from "@/lib/server-auth";
+import { signToken } from "@/lib/server-auth";
+import { loginSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
-});
 
 export async function POST(request: Request) {
   try {
     const data = loginSchema.parse(await request.json());
     const user = await prisma.user.findUnique({ where: { email: data.email } });
-    if (!user || !(await bcrypt.compare(data.password, user.passwordHash))) {
+
+    if (!user) {
+      return Response.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    if (!user.passwordHash) {
+      return Response.json(
+        { error: "This account uses Google sign-in. Continue with Google below." },
+        { status: 401 }
+      );
+    }
+
+    if (!(await bcrypt.compare(data.password, user.passwordHash))) {
       return Response.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
@@ -36,7 +44,8 @@ export async function POST(request: Request) {
     });
   } catch (e) {
     if (e instanceof z.ZodError) {
-      return Response.json({ error: e.errors }, { status: 400 });
+      const message = e.errors[0]?.message || "Invalid input";
+      return Response.json({ error: message }, { status: 400 });
     }
     console.error("Login error:", e);
     return Response.json({ error: "Login failed" }, { status: 500 });

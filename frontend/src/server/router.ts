@@ -89,6 +89,91 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
     return Response.json(userSubjects);
   }
 
+  if (method === "GET" && path === "subjects/dashboard") {
+    const user = requireUser(request);
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { goals: true },
+    });
+    const goals = (dbUser?.goals || {}) as Record<string, unknown>;
+    const exam = String(goals.exam || "JEE").toUpperCase();
+    const branch = typeof goals.gateBranch === "string" ? goals.gateBranch : null;
+    let slugs = EXAM_SUBJECT_SLUGS[exam];
+    if (exam === "GATE" && branch) slugs = [branch];
+
+    const [subjects, userSubjects, recentAttempts, recentSessions] = await Promise.all([
+      prisma.subject.findMany({
+        where: slugs ? { slug: { in: slugs } } : undefined,
+        orderBy: { name: "asc" },
+      }),
+      prisma.userSubject.findMany({
+        where: { userId: user.userId },
+        include: { subject: true },
+      }),
+      prisma.quizAttempt.findMany({
+        where: { userId: user.userId },
+        orderBy: { completedAt: "desc" },
+        take: 20,
+        include: { quiz: { select: { subjectId: true, subject: true } } },
+      }),
+      prisma.studySession.findMany({
+        where: { userId: user.userId },
+        orderBy: { startedAt: "desc" },
+        take: 20,
+        select: { subjectId: true, startedAt: true },
+      }),
+    ]);
+
+    const orderedSubjects = slugs
+      ? slugs.map((slug) => subjects.find((s) => s.slug === slug)).filter(Boolean)
+      : subjects;
+
+    const activityScore = new Map<string, number>();
+    recentAttempts.forEach((a, i) => {
+      const sid = a.quiz.subjectId;
+      if (sid) activityScore.set(sid, (activityScore.get(sid) || 0) + (20 - i));
+    });
+    recentSessions.forEach((s, i) => {
+      if (s.subjectId) activityScore.set(s.subjectId, (activityScore.get(s.subjectId) || 0) + (10 - i));
+    });
+
+    const lastActiveId =
+      typeof goals.lastActiveSubjectId === "string" ? goals.lastActiveSubjectId : null;
+    if (lastActiveId) activityScore.set(lastActiveId, (activityScore.get(lastActiveId) || 0) + 50);
+
+    const progressMap = new Map(userSubjects.map((us) => [us.subjectId, us.progressPercent]));
+
+    const result = orderedSubjects
+      .filter(Boolean)
+      .map((subject) => ({
+        subjectId: subject!.id,
+        progressPercent: progressMap.get(subject!.id) ?? 0,
+        activityScore: activityScore.get(subject!.id) ?? 0,
+        subject: {
+          id: subject!.id,
+          name: subject!.name,
+          slug: subject!.slug,
+          color: subject!.color,
+          icon: subject!.icon,
+        },
+      }));
+
+    result.sort((a, b) => {
+      if (b.activityScore !== a.activityScore) return b.activityScore - a.activityScore;
+      return b.progressPercent - a.progressPercent;
+    });
+
+    const activeId =
+      lastActiveId ||
+      (result.length && result[0].activityScore > 0 ? result[0].subjectId : null);
+
+    return Response.json({
+      exam,
+      subjects: result.map((r) => ({ ...r, isActive: r.subjectId === activeId })),
+      lastActiveSubjectId: activeId,
+    });
+  }
+
   if (method === "POST" && path === "subjects/enroll") {
     const user = requireUser(request);
     const { subjectId, targetExamDate, dailyStudyHours } = await parseJson<{
@@ -257,7 +342,31 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
 
     const newAchievements = await checkAndAwardAchievements(user.userId);
 
+    if (quiz.subjectId) {
+      const dbUser = await prisma.user.findUnique({ where: { id: user.userId }, select: { goals: true } });
+      const goals = (dbUser?.goals || {}) as Record<string, unknown>;
+      await prisma.user.update({
+        where: { id: user.userId },
+        data: { goals: { ...goals, lastActiveSubjectId: quiz.subjectId } },
+      });
+    }
+
     return Response.json({ attempt, xpGain, nextDifficulty, explanations: attempt.answers, newAchievements });
+  }
+
+  const quizDeleteMatch = path.match(/^quizzes\/([^/]+)$/);
+  if (method === "DELETE" && quizDeleteMatch) {
+    const user = requireUser(request);
+    const quiz = await prisma.quiz.findUnique({ where: { id: quizDeleteMatch[1] } });
+    if (!quiz) return Response.json({ error: "Quiz not found" }, { status: 404 });
+    if (quiz.createdById && quiz.createdById !== user.userId) {
+      return Response.json({ error: "You can only delete quizzes you generated" }, { status: 403 });
+    }
+    if (!quiz.createdById) {
+      return Response.json({ error: "Built-in quizzes cannot be deleted" }, { status: 403 });
+    }
+    await prisma.quiz.delete({ where: { id: quiz.id } });
+    return Response.json({ success: true });
   }
 
   // --- Planner ---
@@ -525,6 +634,24 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
     return Response.json({ earned, all });
   }
 
+  if (method === "GET" && path === "analytics/today-study") {
+    const user = requireUser(request);
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const sessions = await prisma.studySession.findMany({
+      where: { userId: user.userId, startedAt: { gte: start } },
+      select: { durationMin: true },
+    });
+    const attempts = await prisma.quizAttempt.findMany({
+      where: { userId: user.userId, completedAt: { gte: start } },
+      select: { timeSpentSec: true },
+    });
+    const sessionMin = sessions.reduce((s, x) => s + x.durationMin, 0);
+    const quizMin = Math.round(attempts.reduce((s, x) => s + x.timeSpentSec, 0) / 60);
+    const minutes = sessionMin + quizMin;
+    return Response.json({ minutes, hours: Math.round((minutes / 60) * 10) / 10 });
+  }
+
   // --- Notes ---
   if (method === "GET" && path === "notes") {
     const user = requireUser(request);
@@ -555,6 +682,52 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
     return Response.json(note, { status: 201 });
   }
 
+  const noteIdMatch = path.match(/^notes\/([^/]+)$/);
+  if (method === "DELETE" && noteIdMatch) {
+    const user = requireUser(request);
+    const note = await prisma.note.findFirst({
+      where: { id: noteIdMatch[1], userId: user.userId },
+    });
+    if (!note) return Response.json({ error: "Note not found" }, { status: 404 });
+    await prisma.flashcard.deleteMany({ where: { noteId: note.id, userId: user.userId } });
+    await prisma.note.delete({ where: { id: note.id } });
+    return Response.json({ success: true });
+  }
+
+  const noteFlashcardsGetMatch = path.match(/^notes\/([^/]+)\/flashcards$/);
+  if (method === "GET" && noteFlashcardsGetMatch) {
+    const user = requireUser(request);
+    const note = await prisma.note.findFirst({
+      where: { id: noteFlashcardsGetMatch[1], userId: user.userId },
+    });
+    if (!note) return Response.json({ error: "Note not found" }, { status: 404 });
+    const cards = await prisma.flashcard.findMany({
+      where: { userId: user.userId, noteId: note.id },
+      orderBy: { nextReview: "desc" },
+    });
+    return Response.json(cards);
+  }
+
+  if (method === "GET" && path === "flashcards") {
+    const user = requireUser(request);
+    const cards = await prisma.flashcard.findMany({
+      where: { userId: user.userId },
+      orderBy: { nextReview: "desc" },
+    });
+    return Response.json(cards);
+  }
+
+  const flashcardDeleteMatch = path.match(/^flashcards\/([^/]+)$/);
+  if (method === "DELETE" && flashcardDeleteMatch) {
+    const user = requireUser(request);
+    const card = await prisma.flashcard.findFirst({
+      where: { id: flashcardDeleteMatch[1], userId: user.userId },
+    });
+    if (!card) return Response.json({ error: "Flashcard not found" }, { status: 404 });
+    await prisma.flashcard.delete({ where: { id: card.id } });
+    return Response.json({ success: true });
+  }
+
   const noteFlashcardsMatch = path.match(/^notes\/([^/]+)\/flashcards$/);
   if (method === "POST" && noteFlashcardsMatch) {
     const user = requireUser(request);
@@ -569,6 +742,7 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
         prisma.flashcard.create({
           data: {
             userId: user.userId,
+            noteId: note.id,
             front: item.text,
             back: item.explanation || item.correctAnswer,
             subjectId: note.subjectId ?? undefined,
@@ -627,6 +801,24 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
       data: { read: true },
     });
     return Response.json({ success: true });
+  }
+
+  if (method === "POST" && path === "notifications") {
+    const user = requireUser(request);
+    const { title, message, type } = await parseJson<{
+      title: string;
+      message: string;
+      type?: string;
+    }>(request);
+    const notification = await prisma.notification.create({
+      data: {
+        userId: user.userId,
+        title: title || "LearnIQ",
+        message: message || "",
+        type: type || "info",
+      },
+    });
+    return Response.json(notification, { status: 201 });
   }
 
   return Response.json({ error: "Route not found" }, { status: 404 });

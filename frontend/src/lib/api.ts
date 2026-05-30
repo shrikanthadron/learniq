@@ -53,6 +53,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  google: (credential: string) =>
+    api<{ user: User; token: string }>("/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    }),
   me: () => api<User>("/auth/me"),
 };
 

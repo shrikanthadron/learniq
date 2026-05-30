@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, Plus, Sparkles, Layers, X } from "lucide-react";
+import { FileText, Plus, Sparkles, Layers, X, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { DashboardLayout } from "@/components/ui/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -18,6 +18,7 @@ interface Flashcard {
   id: string;
   front: string;
   back: string;
+  noteId?: string | null;
 }
 
 export default function NotesPage() {
@@ -28,6 +29,9 @@ export default function NotesPage() {
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [flashcards, setFlashcards] = useState<Flashcard[] | null>(null);
   const [flashcardTitle, setFlashcardTitle] = useState("");
+  const [flashcardNoteId, setFlashcardNoteId] = useState<string | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const loadNotes = useCallback(async () => {
@@ -58,6 +62,33 @@ export default function NotesPage() {
     }
   };
 
+  const deleteNote = async (note: Note) => {
+    if (!confirm(`Delete "${note.title}" and its flashcards?`)) return;
+    setDeletingNoteId(note.id);
+    setError("");
+    try {
+      await api(`/notes/${note.id}`, { method: "DELETE" });
+      setNotes((n) => n.filter((x) => x.id !== note.id));
+      if (flashcardNoteId === note.id) setFlashcards(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete note");
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
+
+  const openFlashcards = async (note: Note) => {
+    setError("");
+    try {
+      const cards = await api<Flashcard[]>(`/notes/${note.id}/flashcards`);
+      setFlashcards(cards);
+      setFlashcardTitle(note.title);
+      setFlashcardNoteId(note.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load flashcards");
+    }
+  };
+
   const generateFlashcards = async (note: Note) => {
     setGeneratingId(note.id);
     setError("");
@@ -69,10 +100,24 @@ export default function NotesPage() {
       }
       setFlashcards(cards);
       setFlashcardTitle(note.title);
+      setFlashcardNoteId(note.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Flashcard generation failed");
     } finally {
       setGeneratingId(null);
+    }
+  };
+
+  const deleteFlashcard = async (cardId: string) => {
+    setDeletingCardId(cardId);
+    setError("");
+    try {
+      await api(`/flashcards/${cardId}`, { method: "DELETE" });
+      setFlashcards((cards) => (cards ? cards.filter((c) => c.id !== cardId) : null));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete flashcard");
+    } finally {
+      setDeletingCardId(null);
     }
   };
 
@@ -122,21 +167,39 @@ export default function NotesPage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="glass-card"
+                  className="glass-card relative"
                 >
-                  <h3 className="font-semibold text-lg">{note.title}</h3>
+                  <button
+                    type="button"
+                    onClick={() => deleteNote(note)}
+                    disabled={deletingNoteId === note.id}
+                    className="absolute top-3 right-3 p-2 rounded-lg hover:bg-red-500/10 text-red-500"
+                    title="Delete note"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <h3 className="font-semibold text-lg pr-10">{note.title}</h3>
                   <pre className="text-sm text-[var(--text-secondary)] mt-3 whitespace-pre-wrap font-sans max-h-40 overflow-y-auto">
                     {note.summary || note.content || "No summary yet."}
                   </pre>
-                  <button
-                    type="button"
-                    onClick={() => generateFlashcards(note)}
-                    disabled={generatingId === note.id}
-                    className="mt-4 text-sm text-brand-500 flex items-center gap-1 hover:underline disabled:opacity-50"
-                  >
-                    <Layers className="w-4 h-4" />
-                    {generatingId === note.id ? "Generating..." : "Generate Flashcards"}
-                  </button>
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => generateFlashcards(note)}
+                      disabled={generatingId === note.id}
+                      className="text-sm text-brand-500 flex items-center gap-1 hover:underline disabled:opacity-50"
+                    >
+                      <Layers className="w-4 h-4" />
+                      {generatingId === note.id ? "Generating..." : "Generate Flashcards"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openFlashcards(note)}
+                      className="text-sm text-[var(--text-secondary)] hover:text-brand-500"
+                    >
+                      View flashcards
+                    </button>
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -144,7 +207,7 @@ export default function NotesPage() {
         </div>
 
         <AnimatePresence>
-          {flashcards && flashcards.length > 0 && (
+          {flashcards && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -158,17 +221,30 @@ export default function NotesPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-                  {flashcards.map((card, idx) => (
-                    <div key={card.id} className="p-4 rounded-xl bg-brand-500/5 border border-[var(--glass-border)]">
-                      <p className="text-xs text-brand-500 font-medium mb-1">Card {idx + 1}</p>
-                      <p className="font-medium text-sm">{card.front}</p>
-                      <p className="text-sm text-[var(--text-secondary)] mt-2 border-t border-[var(--glass-border)] pt-2">
-                        {card.back}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                {flashcards.length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)] py-8 text-center">No flashcards yet. Generate some from your note.</p>
+                ) : (
+                  <div className="overflow-y-auto space-y-3 flex-1 pr-1">
+                    {flashcards.map((card, idx) => (
+                      <div key={card.id} className="p-4 rounded-xl bg-brand-500/5 border border-[var(--glass-border)] relative">
+                        <button
+                          type="button"
+                          onClick={() => deleteFlashcard(card.id)}
+                          disabled={deletingCardId === card.id}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg hover:bg-red-500/10 text-red-500"
+                          title="Delete flashcard"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <p className="text-xs text-brand-500 font-medium mb-1">Card {idx + 1}</p>
+                        <p className="font-medium text-sm pr-8">{card.front}</p>
+                        <p className="text-sm text-[var(--text-secondary)] mt-2 border-t border-[var(--glass-border)] pt-2">
+                          {card.back}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <button type="button" onClick={() => setFlashcards(null)} className="btn-primary mt-4 w-full">
                   Done
                 </button>

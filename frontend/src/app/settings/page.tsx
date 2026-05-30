@@ -11,6 +11,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/lib/api";
 import { getUserExamGoal } from "@/lib/hooks";
 import { EXAM_OPTIONS, GATE_BRANCHES, getUserGateBranch } from "@/lib/exam-config";
+import { requestNotificationPermission } from "@/lib/pomodoro-alerts";
 import clsx from "clsx";
 
 export default function SettingsPage() {
@@ -182,14 +183,26 @@ export default function SettingsPage() {
               <Bell className="w-5 h-5 text-brand-500" /> Notifications
             </h2>
             <label className="flex items-center justify-between p-3 rounded-xl border border-[var(--glass-border)] cursor-pointer">
-              <span className="text-sm">Study reminders & streak alerts</span>
+              <div>
+                <span className="text-sm block">Daily study reminders</span>
+                <span className="text-xs text-[var(--text-secondary)]">7:00 AM, 3:00 PM & 7:00 PM — shows hours studied today</span>
+              </div>
               <input
                 type="checkbox"
                 checked={reminders}
                 onChange={(e) => setReminders(e.target.checked)}
-                className="w-5 h-5 accent-brand-500"
+                className="w-5 h-5 accent-brand-500 shrink-0 ml-3"
               />
             </label>
+            {reminders && (
+              <button
+                type="button"
+                onClick={() => requestNotificationPermission()}
+                className="text-sm text-brand-500 hover:underline"
+              >
+                Enable browser notifications
+              </button>
+            )}
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card flex items-center justify-between">

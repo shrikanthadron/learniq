@@ -4,8 +4,9 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Brain, Plus, Clock, Sparkles } from "lucide-react";
+import { Brain, Plus, Clock, Sparkles, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { DashboardLayout } from "@/components/ui/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
@@ -15,6 +16,7 @@ interface Quiz {
   description?: string;
   difficulty: string;
   timeLimitSec?: number;
+  createdById?: string | null;
   _count?: { questions: number };
   subject?: { name: string; color: string };
 }
@@ -29,6 +31,8 @@ function QuizzesContent() {
   const [generating, setGenerating] = useState(false);
   const [topic, setTopic] = useState(topicParam || "");
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (topicParam) setTopic(topicParam);
@@ -65,6 +69,22 @@ function QuizzesContent() {
       setError(e instanceof Error ? e.message : "Quiz generation failed");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const deleteQuiz = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this quiz permanently?")) return;
+    setDeletingId(id);
+    setError("");
+    try {
+      await api(`/quizzes/${id}`, { method: "DELETE" });
+      setQuizzes((q) => q.filter((x) => x.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -119,7 +139,18 @@ function QuizzesContent() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.1 }}
                 >
-                  <Link href={`/quizzes/${quiz.id}`} className="glass-card block group">
+                  <Link href={`/quizzes/${quiz.id}`} className="glass-card block group relative">
+                    {user && quiz.createdById === user.id && (
+                      <button
+                        type="button"
+                        onClick={(e) => deleteQuiz(quiz.id, e)}
+                        disabled={deletingId === quiz.id}
+                        className="absolute top-3 right-3 p-2 rounded-lg hover:bg-red-500/10 text-red-500 z-10"
+                        title="Delete quiz"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                     <div className="flex items-start justify-between">
                       <Brain className="w-8 h-8 text-brand-500" />
                       <span className={`text-xs px-2 py-1 rounded-full ${

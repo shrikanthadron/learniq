@@ -1,22 +1,39 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { authenticate, signToken } from "../middleware/auth.js";
 
 const router = Router();
 
+const emailField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(254)
+  .transform((e) => e.toLowerCase())
+  .refine((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e), { message: "Enter a valid email address" });
+
 const registerSchema = z.object({
-  email: z.string().email(),
+  email: emailField,
   password: z.string().min(6),
-  name: z.string().min(2),
+  name: z.string().trim().min(2),
   role: z.enum(["STUDENT", "TEACHER", "ADMIN"]).optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  email: emailField,
+  password: z.string().min(1),
 });
+
+const googleSchema = z.object({
+  credential: z.string().min(1),
+});
+
+function getGoogleClientId(): string {
+  return process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+}
 
 router.post("/register", async (req, res) => {
   try {
@@ -39,7 +56,10 @@ router.post("/register", async (req, res) => {
     const token = signToken({ userId: user.id, email: user.email, role: user.role });
     res.status(201).json({ user, token });
   } catch (e) {
-    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
+    if (e instanceof z.ZodError) {
+      const message = e.errors[0]?.message || "Invalid input";
+      return res.status(400).json({ error: message });
+    }
     console.error("Registration error:", e);
     res.status(500).json({ error: "Registration failed" });
   }
@@ -49,7 +69,16 @@ router.post("/login", async (req, res) => {
   try {
     const data = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: data.email } });
-    if (!user || !(await bcrypt.compare(data.password, user.passwordHash))) {
+
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(401).json({ error: "This account uses Google sign-in" });
+    }
+
+    if (!(await bcrypt.compare(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -69,8 +98,75 @@ router.post("/login", async (req, res) => {
       token,
     });
   } catch (e) {
-    if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
+    if (e instanceof z.ZodError) {
+      const message = e.errors[0]?.message || "Invalid input";
+      return res.status(400).json({ error: message });
+    }
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.post("/google", async (req, res) => {
+  try {
+    const clientId = getGoogleClientId();
+    if (!clientId) {
+      return res.status(503).json({ error: "Google sign-in is not configured" });
+    }
+
+    const { credential } = googleSchema.parse(req.body);
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: clientId });
+    const payload = ticket.getPayload();
+
+    if (!payload?.email || !payload.sub) {
+      return res.status(401).json({ error: "Invalid Google token" });
+    }
+
+    if (!payload.email_verified) {
+      return res.status(401).json({ error: "Google email is not verified" });
+    }
+
+    const email = payload.email.toLowerCase();
+    const googleId = payload.sub;
+    const name = payload.name || email.split("@")[0];
+    const avatarUrl = payload.picture ?? null;
+
+    const existing = await prisma.user.findFirst({
+      where: { OR: [{ googleId }, { email }] },
+    });
+
+    const publicUserSelect = {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      xp: true,
+      level: true,
+      streakDays: true,
+      avatarUrl: true,
+      goals: true,
+    } as const;
+
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            googleId: existing.googleId ?? googleId,
+            avatarUrl: existing.avatarUrl ?? avatarUrl,
+          },
+          select: publicUserSelect,
+        })
+      : await prisma.user.create({
+          data: { email, googleId, name, avatarUrl, goals: { exam: "General", dailyHours: 2 } },
+          select: publicUserSelect,
+        });
+
+    const token = signToken({ userId: user.id, email: user.email, role: user.role });
+    res.json({ user, token });
+  } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: "Missing Google credential" });
+    console.error("Google auth error:", e);
+    res.status(401).json({ error: "Google sign-in failed" });
   }
 });
 

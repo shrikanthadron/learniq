@@ -6,11 +6,15 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Zap } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { EmailField } from "@/components/auth/EmailField";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { getEmailError, normalizeEmail } from "@/lib/validators";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -19,9 +23,26 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setEmailTouched(true);
+
+    const emailError = getEmailError(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
+    if (name.trim().length < 2) {
+      setError("Name must be at least 2 characters");
+      return;
+    }
+
     setLoading(true);
     try {
-      await register({ name, email, password });
+      await register({
+        name: name.trim(),
+        email: normalizeEmail(email),
+        password,
+      });
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -46,6 +67,19 @@ export default function RegisterPage() {
 
         <h1 className="text-2xl font-bold text-center mb-6">Create your account</h1>
 
+        <div className="space-y-4 mb-6">
+          <GoogleSignInButton
+            label="signup_with"
+            onSuccess={() => router.push("/dashboard")}
+            onError={setError}
+          />
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[var(--border)]" />
+            <span className="text-xs text-[var(--text-secondary)]">or with email</span>
+            <div className="flex-1 h-px bg-[var(--border)]" />
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
@@ -53,15 +87,14 @@ export default function RegisterPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="input-field"
+            minLength={2}
             required
           />
-          <input
-            type="email"
-            placeholder="Email"
+          <EmailField
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-            required
+            onChange={setEmail}
+            touched={emailTouched}
+            onBlur={() => setEmailTouched(true)}
           />
           <input
             type="password"

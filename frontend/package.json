@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "@react-oauth/google": "^0.13.5",
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "framer-motion": "^12.12.1",
+    "google-auth-library": "^10.6.2",
     "groq-sdk": "^0.21.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.511.0",

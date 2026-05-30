@@ -19,10 +19,12 @@ interface Recommendations {
   examReadiness: number;
 }
 
-interface UserSubject {
+interface DashboardSubject {
   subjectId: string;
   progressPercent: number;
-  subject: { id: string; name: string; color: string; icon?: string | null };
+  activityScore: number;
+  isActive: boolean;
+  subject: { id: string; name: string; slug: string; color: string; icon?: string | null };
 }
 
 const defaultRec: Recommendations = {
@@ -38,7 +40,8 @@ export default function DashboardPage() {
   const user = getActiveUser(authUser);
   const examGoal = getUserExamGoal(user.goals as Record<string, unknown> | null);
   const [rec, setRec] = useState<Recommendations>(defaultRec);
-  const [subjects, setSubjects] = useState<UserSubject[]>([]);
+  const [subjects, setSubjects] = useState<DashboardSubject[]>([]);
+  const [dashboardExam, setDashboardExam] = useState(examGoal);
 
   useEffect(() => {
     api<{ recommendation: { content: Recommendations } }>("/analytics/recommendations")
@@ -47,10 +50,13 @@ export default function DashboardPage() {
       })
       .catch(() => {});
 
-    api<UserSubject[]>("/subjects/my")
-      .then(setSubjects)
+    api<{ exam: string; subjects: DashboardSubject[] }>("/subjects/dashboard")
+      .then((data) => {
+        setSubjects(data.subjects);
+        if (data.exam) setDashboardExam(data.exam);
+      })
       .catch(() => {});
-  }, []);
+  }, [authUser?.id]);
 
   const stats = [
     { label: "Study Streak", value: `${user.streakDays} days`, icon: Flame, color: "text-orange-500" },
@@ -59,6 +65,8 @@ export default function DashboardPage() {
     { label: "Level", value: user.level, icon: TrendingUp, color: "text-purple-500" },
   ];
 
+  const activeSubject = subjects.find((s) => s.isActive);
+
   return (
     <div className="space-y-8">
       <div>
@@ -66,7 +74,8 @@ export default function DashboardPage() {
           Welcome back, {user.name.split(" ")[0]} 👋
         </motion.h1>
         <p className="text-[var(--text-secondary)] mt-1">
-          Your {examGoal} study plan for today
+          Your {dashboardExam} study plan for today
+          {activeSubject ? ` · focusing on ${activeSubject.subject.name}` : ""}
         </p>
       </div>
 
@@ -132,26 +141,50 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h2 className="font-semibold text-lg mb-4">Your Subjects</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-lg">
+            {dashboardExam} Subjects
+            {activeSubject && (
+              <span className="ml-2 text-xs font-normal px-2 py-1 rounded-full bg-brand-500/15 text-brand-500">
+                Active: {activeSubject.subject.name}
+              </span>
+            )}
+          </h2>
+          <Link href="/subjects" className="text-sm text-brand-500 hover:underline">View all</Link>
+        </div>
         {subjects.length === 0 ? (
           <p className="text-sm text-[var(--text-secondary)] glass-card py-6 text-center">
-            <Link href="/subjects" className="text-brand-500 underline">Enroll in subjects</Link> to track progress here.
+            <Link href="/settings" className="text-brand-500 underline">Set your exam</Link> in Settings to see subjects here.
           </p>
         ) : (
           <div className="grid md:grid-cols-3 gap-4">
             {subjects.map((us) => (
-              <div key={us.subjectId} className="glass-card">
+              <Link
+                key={us.subjectId}
+                href={`/subjects?highlight=${us.subject.id}`}
+                className={`glass-card block transition hover:border-brand-500/30 ${
+                  us.isActive ? "ring-2 ring-brand-500/40 border-brand-500/30" : ""
+                }`}
+              >
                 <div className="flex items-center gap-3 mb-3">
                   <span className="text-2xl">{us.subject.icon || "📚"}</span>
-                  <div>
-                    <h3 className="font-semibold">{us.subject.name}</h3>
-                    <p className="text-xs text-[var(--text-secondary)]">{Math.round(us.progressPercent)}% complete</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold truncate">{us.subject.name}</h3>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {Math.round(us.progressPercent)}% complete
+                      {us.activityScore > 0 ? " · recently studied" : ""}
+                    </p>
                   </div>
+                  {us.isActive && (
+                    <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand-500 text-white shrink-0">
+                      Active
+                    </span>
+                  )}
                 </div>
                 <div className="progress-bar">
                   <div className="progress-fill" style={{ width: `${us.progressPercent}%`, background: us.subject.color }} />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

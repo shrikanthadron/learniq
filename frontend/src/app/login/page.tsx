@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Zap } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { EmailField } from "@/components/auth/EmailField";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { getEmailError, normalizeEmail } from "@/lib/validators";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -18,9 +22,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setEmailTouched(true);
+
+    const emailError = getEmailError(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
     setLoading(true);
     try {
-      await login(email, password);
+      await login(normalizeEmail(email), password);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed. Check email, password, and that the backend is running.");
@@ -46,14 +58,25 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-center mb-2">Welcome back</h1>
         <p className="text-center text-[var(--text-secondary)] text-sm mb-6">Sign in to your account</p>
 
+        <div className="space-y-4 mb-6">
+          <GoogleSignInButton
+            label="signin_with"
+            onSuccess={() => router.push("/dashboard")}
+            onError={setError}
+          />
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[var(--border)]" />
+            <span className="text-xs text-[var(--text-secondary)]">or with email</span>
+            <div className="flex-1 h-px bg-[var(--border)]" />
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
+          <EmailField
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-            required
+            onChange={setEmail}
+            touched={emailTouched}
+            onBlur={() => setEmailTouched(true)}
           />
           <input
             type="password"

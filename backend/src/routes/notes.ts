@@ -42,6 +42,7 @@ router.post("/:id/flashcards", async (req, res) => {
       prisma.flashcard.create({
         data: {
           userId: req.user!.userId,
+          noteId: note.id,
           front: q.text,
           back: q.explanation || q.correctAnswer,
           subjectId: note.subjectId ?? undefined,
@@ -50,6 +51,28 @@ router.post("/:id/flashcards", async (req, res) => {
     )
   );
   res.status(201).json(cards);
+});
+
+router.get("/:id/flashcards", async (req, res) => {
+  const note = await prisma.note.findFirst({
+    where: { id: req.params.id, userId: req.user!.userId },
+  });
+  if (!note) return res.status(404).json({ error: "Note not found" });
+  const cards = await prisma.flashcard.findMany({
+    where: { userId: req.user!.userId, noteId: note.id },
+    orderBy: { nextReview: "desc" },
+  });
+  res.json(cards);
+});
+
+router.delete("/:id", async (req, res) => {
+  const note = await prisma.note.findFirst({
+    where: { id: req.params.id, userId: req.user!.userId },
+  });
+  if (!note) return res.status(404).json({ error: "Note not found" });
+  await prisma.flashcard.deleteMany({ where: { noteId: note.id, userId: req.user!.userId } });
+  await prisma.note.delete({ where: { id: note.id } });
+  res.json({ success: true });
 });
 
 router.get("/flashcards/due", async (req, res) => {

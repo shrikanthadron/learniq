@@ -163,4 +163,17 @@ router.post("/:id/submit", async (req, res) => {
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  const quiz = await prisma.quiz.findUnique({ where: { id: req.params.id } });
+  if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+  if (quiz.createdById && quiz.createdById !== req.user!.userId) {
+    return res.status(403).json({ error: "You can only delete quizzes you generated" });
+  }
+  if (!quiz.createdById) {
+    return res.status(403).json({ error: "Built-in quizzes cannot be deleted" });
+  }
+  await prisma.quiz.delete({ where: { id: quiz.id } });
+  res.json({ success: true });
+});
+
 export default router;
