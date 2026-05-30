@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   description: "Personalized learning, intelligent quizzes, smart scheduling, and performance analytics",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
