@@ -40,6 +40,7 @@ router.post("/register", async (req, res) => {
     res.status(201).json({ user, token });
   } catch (e) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
+    console.error("Registration error:", e);
     res.status(500).json({ error: "Registration failed" });
   }
 });
