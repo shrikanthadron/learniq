@@ -54,9 +54,10 @@ function QuizzesContent() {
         body: JSON.stringify({
           topic,
           subjectId: subjectIdParam || undefined,
-          count: 5,
+          count: 15,
           difficulty: "MEDIUM",
           types: ["MCQ", "TRUE_FALSE", "FILL_BLANK"],
+          timeLimitSec: 900,
         }),
       });
       window.location.href = `/quizzes/${quiz.id}`;
@@ -89,6 +90,9 @@ function QuizzesContent() {
               <Sparkles className="w-5 h-5 text-brand-500" />
               Generate New Quiz
             </h2>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Generates 15 questions · ~15 min timer
+            </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <input
                 value={topic}

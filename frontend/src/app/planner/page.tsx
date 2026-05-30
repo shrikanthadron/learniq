@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Plus, Timer, Sparkles, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { getRangeForView, PlannerViewMode } from "@/lib/planner-utils";
 import { DashboardLayout } from "@/components/ui/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { EventModal, PlannerEventForm } from "@/components/planner/EventModal";
+import { PlannerCalendar } from "@/components/planner/PlannerCalendar";
 
 interface PlannerEvent {
   id: string;
@@ -20,7 +22,8 @@ interface PlannerEvent {
 
 export default function PlannerPage() {
   const [events, setEvents] = useState<PlannerEvent[]>([]);
-  const [view, setView] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("WEEKLY");
+  const [view, setView] = useState<PlannerViewMode>("WEEKLY");
+  const [anchor, setAnchor] = useState(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PlannerEvent | null>(null);
   const [pomodoroMin, setPomodoroMin] = useState(25);
@@ -29,9 +32,15 @@ export default function PlannerPage() {
   const [error, setError] = useState("");
 
   const loadEvents = useCallback(async () => {
-    const data = await api<PlannerEvent[]>("/planner/events");
+    const { from, to } = getRangeForView(view, anchor);
+    const params = new URLSearchParams({
+      from: from.toISOString(),
+      to: to.toISOString(),
+      view,
+    });
+    const data = await api<PlannerEvent[]>(`/planner/events?${params}`);
     setEvents(data);
-  }, []);
+  }, [view, anchor]);
 
   useEffect(() => {
     loadEvents().catch((e) => setError(e instanceof Error ? e.message : "Failed to load events"));
@@ -127,15 +136,16 @@ export default function PlannerPage() {
                 <Calendar className="w-8 h-8 text-brand-500" />
                 Study Planner
               </h1>
-              <p className="text-[var(--text-secondary)]">Add, edit, delete events · AI timetable · Pomodoro</p>
+              <p className="text-[var(--text-secondary)]">Daily · Weekly · Monthly views with drag-free scheduling</p>
             </div>
             <div className="flex gap-2">
               {(["DAILY", "WEEKLY", "MONTHLY"] as const).map((v) => (
                 <button
                   key={v}
+                  type="button"
                   onClick={() => setView(v)}
-                  className={`px-4 py-2 rounded-xl text-sm transition ${
-                    view === v ? "bg-brand-500 text-white" : "glass"
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                    view === v ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25" : "glass hover:bg-brand-500/10"
                   }`}
                 >
                   {v.charAt(0) + v.slice(1).toLowerCase()}
@@ -148,11 +158,24 @@ export default function PlannerPage() {
 
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
+              <PlannerCalendar
+                view={view}
+                anchor={anchor}
+                events={events}
+                onAnchorChange={setAnchor}
+                onSelectEvent={(e) => {
+                  setEditing(e);
+                  setModalOpen(true);
+                }}
+                onToggleComplete={toggleComplete}
+              />
+
               <div className="flex flex-wrap gap-3">
-                <button onClick={generateTimetable} className="btn-primary flex items-center gap-2 text-sm">
+                <button type="button" onClick={generateTimetable} className="btn-primary flex items-center gap-2 text-sm">
                   <Sparkles className="w-4 h-4" /> AI Generate Timetable
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setEditing(null);
                     setModalOpen(true);
@@ -163,59 +186,59 @@ export default function PlannerPage() {
                 </button>
               </div>
 
-              {events.length === 0 && (
-                <p className="text-[var(--text-secondary)] text-sm py-8 text-center glass-card">
-                  No events yet. Click <strong>Add Event</strong> to create one.
-                </p>
-              )}
-
-              {events.map((event, i) => (
-                <motion.div
-                  key={event.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="glass-card flex items-center gap-4"
-                >
-                  <div
-                    className={`w-1 h-12 rounded-full shrink-0 ${
-                      event.priority >= 3 ? "bg-red-500" : event.priority >= 2 ? "bg-amber-500" : "bg-brand-500"
-                    }`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h3 className={`font-semibold truncate ${event.completed ? "line-through opacity-50" : ""}`}>
-                      {event.title}
-                    </h3>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      {formatDate(event.startAt)} —{" "}
-                      {new Date(event.endAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={event.completed}
-                    onChange={() => toggleComplete(event)}
-                    className="w-5 h-5 accent-brand-500 shrink-0"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(event);
-                      setModalOpen(true);
-                    }}
-                    className="p-2 rounded-lg hover:bg-brand-500/10 text-brand-500 shrink-0"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteEvent(event.id)}
-                    className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              ))}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm text-[var(--text-secondary)]">Events in this period</h3>
+                {events.length === 0 ? (
+                  <p className="text-[var(--text-secondary)] text-sm py-4 text-center glass-card">
+                    No events in this {view.toLowerCase()} view. Add one or generate a timetable.
+                  </p>
+                ) : (
+                  events.map((event, i) => (
+                    <motion.div
+                      key={event.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="glass-card flex items-center gap-4"
+                    >
+                      <div
+                        className={`w-1 h-12 rounded-full shrink-0 ${
+                          event.priority >= 3 ? "bg-red-500" : event.priority >= 2 ? "bg-amber-500" : "bg-brand-500"
+                        }`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h3 className={`font-semibold truncate ${event.completed ? "line-through opacity-50" : ""}`}>
+                          {event.title}
+                        </h3>
+                        <p className="text-sm text-[var(--text-secondary)]">{formatDate(event.startAt)}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={event.completed}
+                        onChange={() => toggleComplete(event)}
+                        className="w-5 h-5 accent-brand-500 shrink-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(event);
+                          setModalOpen(true);
+                        }}
+                        className="p-2 rounded-lg hover:bg-brand-500/10 text-brand-500 shrink-0"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteEvent(event.id)}
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="glass-card text-center h-fit">
@@ -236,6 +259,7 @@ export default function PlannerPage() {
                 <option value={15}>15 min</option>
               </select>
               <button
+                type="button"
                 onClick={pomodoroActive ? () => setPomodoroActive(false) : startPomodoro}
                 className="btn-primary w-full"
               >

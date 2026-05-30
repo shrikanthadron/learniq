@@ -4,13 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { parseJson, requireRole, requireUser } from "@/lib/api-utils";
 import { generateQuizQuestions, summarizeNotes } from "@/server/services/ai";
 import { adjustDifficulty, buildAdaptiveRecommendations } from "@/server/services/recommendations";
-
-const EXAM_SUBJECT_SLUGS: Record<string, string[]> = {
-  JEE: ["mathematics", "physics", "chemistry"],
-  NEET: ["chemistry", "biology", "physics"],
-  GATE: ["cs", "mathematics", "physics"],
-  CET: ["mathematics", "physics", "chemistry", "biology"],
-};
+import { checkAndAwardAchievements } from "@/server/services/achievements";
+import { EXAM_SUBJECT_SLUGS } from "@/lib/exam-config";
 
 export async function handleApi(request: Request, pathSegments: string[]): Promise<Response> {
   const path = pathSegments.join("/");
@@ -21,7 +16,11 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
   // --- Subjects ---
   if (method === "GET" && path === "subjects") {
     const exam = String(q.get("exam") || "").toUpperCase();
-    const slugs = exam ? EXAM_SUBJECT_SLUGS[exam] : undefined;
+    const branch = q.get("branch");
+    let slugs = exam ? EXAM_SUBJECT_SLUGS[exam] : undefined;
+    if (exam === "GATE" && branch) {
+      slugs = [branch];
+    }
     const subjects = await prisma.subject.findMany({
       where: slugs ? { slug: { in: slugs } } : undefined,
       include: {
@@ -37,6 +36,48 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
       ? slugs.map((slug) => subjects.find((s) => s.slug === slug)).filter(Boolean)
       : subjects;
     return Response.json(ordered.length ? ordered : subjects);
+  }
+
+  if (method === "GET" && path === "subjects/syllabus-progress") {
+    const user = requireUser(request);
+    const subjectId = q.get("subjectId");
+    const records = await prisma.progressRecord.findMany({
+      where: { userId: user.userId, entityType: "topic" },
+    });
+    const map: Record<string, { percent: number; completed: boolean }> = {};
+    for (const r of records) {
+      if (!subjectId || r.entityId) map[r.entityId] = { percent: r.percent, completed: r.completed };
+    }
+    return Response.json(map);
+  }
+
+  if (method === "POST" && path === "subjects/topic-progress") {
+    const user = requireUser(request);
+    const { topicId, subjectId, percent, completed } = await parseJson<{
+      topicId: string;
+      subjectId: string;
+      percent: number;
+      completed?: boolean;
+    }>(request);
+    const record = await prisma.progressRecord.upsert({
+      where: { userId_entityType_entityId: { userId: user.userId, entityType: "topic", entityId: topicId } },
+      create: { userId: user.userId, entityType: "topic", entityId: topicId, percent, completed: completed ?? false },
+      update: { percent, completed: completed ?? false },
+    });
+    if (subjectId) {
+      const topics = await prisma.topic.findMany({ where: { chapter: { subjectId } } });
+      const allProgress = await prisma.progressRecord.findMany({
+        where: { userId: user.userId, entityType: "topic", entityId: { in: topics.map((t) => t.id) } },
+      });
+      const avg = topics.length ? allProgress.reduce((s, p) => s + p.percent, 0) / topics.length : percent;
+      await prisma.userSubject.upsert({
+        where: { userId_subjectId: { userId: user.userId, subjectId } },
+        create: { userId: user.userId, subjectId, progressPercent: avg },
+        update: { progressPercent: avg },
+      });
+    }
+    await checkAndAwardAchievements(user.userId);
+    return Response.json(record);
   }
 
   if (method === "GET" && path === "subjects/my") {
@@ -118,7 +159,7 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
       topic: z.string(),
       subjectId: z.string().optional(),
       topicId: z.string().optional(),
-      count: z.number().min(1).max(20).default(5),
+      count: z.number().min(1).max(20).default(15),
       difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
       types: z.array(z.string()).default(["MCQ", "TRUE_FALSE"]),
       timeLimitSec: z.number().optional(),
@@ -133,7 +174,7 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
         topicId: data.topicId,
         createdById: user.userId,
         difficulty: data.difficulty as Difficulty,
-        timeLimitSec: data.timeLimitSec || data.count * 60,
+        timeLimitSec: data.timeLimitSec || data.count * 90,
         questions: {
           create: generated.map((item) => ({
             type: item.type as QuestionType,
@@ -214,7 +255,9 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
       update: { xp: { increment: xpGain } },
     });
 
-    return Response.json({ attempt, xpGain, nextDifficulty, explanations: attempt.answers });
+    const newAchievements = await checkAndAwardAchievements(user.userId);
+
+    return Response.json({ attempt, xpGain, nextDifficulty, explanations: attempt.answers, newAchievements });
   }
 
   // --- Planner ---
@@ -226,8 +269,13 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
     const events = await prisma.plannerEvent.findMany({
       where: {
         userId: user.userId,
-        ...(from && { startAt: { gte: new Date(from) } }),
-        ...(to && { endAt: { lte: new Date(to) } }),
+        ...(from && to
+          ? { startAt: { lte: new Date(to) }, endAt: { gte: new Date(from) } }
+          : from
+            ? { startAt: { gte: new Date(from) } }
+            : to
+              ? { endAt: { lte: new Date(to) } }
+              : {}),
         ...(view && { view: view as PlannerView }),
       },
       orderBy: [{ startAt: "asc" }, { orderIndex: "asc" }],
@@ -384,7 +432,8 @@ export async function handleApi(request: Request, pathSegments: string[]): Promi
         data: { streakDays, lastStudyDate: new Date(), xp: { increment: 5 } },
       });
     }
-    return Response.json(session, { status: 201 });
+    const newAchievements = await checkAndAwardAchievements(user.userId);
+    return Response.json({ ...session, newAchievements }, { status: 201 });
   }
 
   // --- Analytics ---

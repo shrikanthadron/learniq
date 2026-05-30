@@ -4,11 +4,11 @@ import { authenticate } from "../middleware/auth.js";
 
 const router = Router();
 
-/** Subjects recommended per exam goal (JEE, NEET, GATE, CET) */
+/** Subjects recommended per exam goal */
 const EXAM_SUBJECT_SLUGS: Record<string, string[]> = {
-  JEE: ["mathematics", "physics", "chemistry"],
-  NEET: ["chemistry", "biology", "physics"],
-  GATE: ["cs", "mathematics", "physics"],
+  JEE: ["physics", "chemistry", "mathematics"],
+  NEET: ["physics", "chemistry", "biology"],
+  GATE: ["gate-cs", "gate-ec", "gate-ee", "gate-me", "gate-ce", "gate-in"],
   CET: ["mathematics", "physics", "chemistry", "biology"],
 };
 

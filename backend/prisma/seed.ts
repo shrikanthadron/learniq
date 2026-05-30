@@ -48,36 +48,42 @@ async function main() {
   const subjects = [
     { name: "Mathematics", slug: "mathematics", color: "#6366f1", examMode: "JEE", icon: "📐" },
     { name: "Physics", slug: "physics", color: "#8b5cf6", examMode: "JEE", icon: "⚛️" },
-    { name: "Chemistry", slug: "chemistry", color: "#06b6d4", examMode: "NEET", icon: "🧪" },
+    { name: "Chemistry", slug: "chemistry", color: "#06b6d4", examMode: "JEE", icon: "🧪" },
     { name: "Biology", slug: "biology", color: "#10b981", examMode: "NEET", icon: "🧬" },
-    { name: "Computer Science", slug: "cs", color: "#f59e0b", examMode: "GATE", icon: "💻" },
+  ];
+
+  const gateBranches = [
+    { name: "Computer Science", slug: "gate-cs", color: "#f59e0b", icon: "💻", syllabus: ["Engineering Mathematics", "Digital Logic", "Computer Organization", "Programming & Data Structures", "Algorithms", "Theory of Computation", "Compiler Design", "Operating Systems", "Databases", "Computer Networks"] },
+    { name: "Electronics & Communication", slug: "gate-ec", color: "#ec4899", icon: "📡", syllabus: ["Engineering Mathematics", "Networks & Signals", "Electronic Devices", "Analog Circuits", "Digital Circuits", "Control Systems", "Communications", "Electromagnetics"] },
+    { name: "Electrical Engineering", slug: "gate-ee", color: "#eab308", icon: "⚡", syllabus: ["Engineering Mathematics", "Electric Circuits", "Electromagnetic Fields", "Signals & Systems", "Electrical Machines", "Power Systems", "Control Systems", "Power Electronics"] },
+    { name: "Mechanical Engineering", slug: "gate-me", color: "#64748b", icon: "🔧", syllabus: ["Engineering Mathematics", "Engineering Mechanics", "Mechanics of Materials", "Theory of Machines", "Vibrations", "Fluid Mechanics", "Thermodynamics", "Heat Transfer", "Manufacturing"] },
+    { name: "Civil Engineering", slug: "gate-ce", color: "#78716c", icon: "🏗️", syllabus: ["Engineering Mathematics", "Structural Analysis", "Concrete Structures", "Steel Structures", "Geotechnical Engineering", "Fluid Mechanics", "Hydraulics", "Environmental Engineering", "Transportation"] },
+    { name: "Instrumentation Engineering", slug: "gate-in", color: "#14b8a6", icon: "📊", syllabus: ["Engineering Mathematics", "Electrical Circuits", "Signals & Systems", "Control Systems", "Sensors & Transducers", "Industrial Instrumentation", "Communication & Optical", "Biomedical Instrumentation"] },
   ];
 
   for (const s of subjects) {
     const subject = await prisma.subject.upsert({
       where: { slug: s.slug },
-      update: {},
+      update: { name: s.name, examMode: s.examMode, color: s.color, icon: s.icon },
       create: s,
     });
 
-    const chapter = await prisma.chapter.create({
-      data: {
-        subjectId: subject.id,
-        title: `Fundamentals of ${s.name}`,
-        orderIndex: 0,
-        description: `Core concepts in ${s.name}`,
-      },
-    });
-
-    const topics = ["Introduction", "Core Concepts", "Advanced Problems", "Exam Practice"];
-    for (let i = 0; i < topics.length; i++) {
-      await prisma.topic.create({
+    const existingChapter = await prisma.chapter.findFirst({ where: { subjectId: subject.id } });
+    if (!existingChapter) {
+      const chapter = await prisma.chapter.create({
         data: {
-          chapterId: chapter.id,
-          title: topics[i],
-          orderIndex: i,
+          subjectId: subject.id,
+          title: `Fundamentals of ${s.name}`,
+          orderIndex: 0,
+          description: `Core concepts in ${s.name}`,
         },
       });
+      const topics = ["Introduction", "Core Concepts", "Advanced Problems", "Exam Practice"];
+      for (let i = 0; i < topics.length; i++) {
+        await prisma.topic.create({
+          data: { chapterId: chapter.id, title: topics[i], orderIndex: i },
+        });
+      }
     }
 
     await prisma.userSubject.upsert({
@@ -87,10 +93,30 @@ async function main() {
         userId: student.id,
         subjectId: subject.id,
         progressPercent: 30 + Math.random() * 50,
-        weakTopics: [topics[2]],
+        weakTopics: ["Advanced Problems"],
         dailyStudyHours: 2,
       },
     });
+  }
+
+  for (const branch of gateBranches) {
+    const subject = await prisma.subject.upsert({
+      where: { slug: branch.slug },
+      update: { name: branch.name, examMode: "GATE", color: branch.color, icon: branch.icon },
+      create: { name: branch.name, slug: branch.slug, color: branch.color, examMode: "GATE", icon: branch.icon },
+    });
+
+    const existingChapter = await prisma.chapter.findFirst({ where: { subjectId: subject.id, title: "GATE Syllabus" } });
+    if (!existingChapter) {
+      const chapter = await prisma.chapter.create({
+        data: { subjectId: subject.id, title: "GATE Syllabus", orderIndex: 0, description: `${branch.name} syllabus tracker` },
+      });
+      for (let i = 0; i < branch.syllabus.length; i++) {
+        await prisma.topic.create({
+          data: { chapterId: chapter.id, title: branch.syllabus[i], orderIndex: i },
+        });
+      }
+    }
   }
 
   const math = await prisma.subject.findUnique({ where: { slug: "mathematics" } });
@@ -191,6 +217,8 @@ async function main() {
     { name: "Streak Master", description: "7-day study streak", icon: "🔥", xpReward: 100 },
     { name: "Quiz Champion", description: "Score 90%+ on a quiz", icon: "🏆", xpReward: 150 },
     { name: "Night Owl", description: "Study after 10 PM", icon: "🦉", xpReward: 75 },
+    { name: "Subject Master", description: "Complete 100% of a subject", icon: "📚", xpReward: 200 },
+    { name: "Focus Hero", description: "Complete 10 Pomodoro sessions", icon: "⏱️", xpReward: 80 },
   ];
 
   const existingAch = await prisma.achievement.count();
