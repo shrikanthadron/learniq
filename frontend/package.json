@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:vercel": "npm run build --prefix ../backend && node scripts/prepare-api.mjs && node scripts/generate-prisma.mjs && next build",
+    "build:vercel": "npm run build --prefix ../backend && node scripts/generate-prisma.mjs && next build",
     "postinstall": "node scripts/generate-prisma.mjs",
     "start": "next start",
     "lint": "next lint"

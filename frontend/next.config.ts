@@ -7,11 +7,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.join(__dirname, ".."),
   outputFileTracingIncludes: {
-    "/api/[...path]/route": ["./server-dist/**", ...prismaIncludes],
+    "/api/[...path]/route": prismaIncludes,
     "/api/health/route": prismaIncludes,
     "/api/auth/register/route": prismaIncludes,
     "/api/auth/login/route": prismaIncludes,
     "/api/auth/me/route": prismaIncludes,
+    "/api/auth/profile/route": prismaIncludes,
   },
   serverExternalPackages: ["@prisma/client", "bcryptjs", "jsonwebtoken"],
   async rewrites() {
