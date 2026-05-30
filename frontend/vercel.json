@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install && npm install --prefix ../backend && npm exec --prefix ../backend prisma generate",
+  "installCommand": "npm install && npm install --prefix ../backend",
   "buildCommand": "npm run build --prefix ../backend && npm run build",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" }
