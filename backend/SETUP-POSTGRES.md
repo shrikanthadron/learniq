@@ -40,7 +40,7 @@ You have **PostgreSQL 18** installed. The error `P1000: Authentication failed` m
 If you prefer not to create `learniq`, edit `backend\.env`:
 
 ```env
-DATABASE_URL="postgresql://postgres:YOUR_POSTGRES_PASSWORD@localhost:5432/learniq"
+DATABASE_URL="postgresql://neondb_owner:npg_7lRWO6zocHPr@ep-polished-cell-aos3f4sn-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 ```
 
 Create only the database in pgAdmin or SQL Shell:

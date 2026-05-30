@@ -45,7 +45,7 @@ Option B — pgAdmin (local PostgreSQL):
   4. cd backend && npx prisma db push && npm run db:seed
 
 Option C — If your postgres user uses a different password, edit backend\.env:
-  DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/learniq"
+  DATABASE_URL="postgresql://neondb_owner:npg_7lRWO6zocHPr@ep-polished-cell-aos3f4sn-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 "@ -ForegroundColor Red
     exit 1

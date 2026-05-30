@@ -20,7 +20,7 @@ Write-Host ""
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "Success! Your backend .env should use:" -ForegroundColor Green
-    Write-Host 'DATABASE_URL="postgresql://learniq:learniq_secret@localhost:5432/learniq"'
+    Write-Host 'DATABASE_URL="postgresql://neondb_owner:npg_7lRWO6zocHPr@ep-polished-cell-aos3f4sn-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"'
     Write-Host ""
     Write-Host "Next commands:" -ForegroundColor Cyan
     Write-Host "  cd ..\"
