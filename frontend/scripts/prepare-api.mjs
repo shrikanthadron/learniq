@@ -10,7 +10,6 @@ const target = path.join(frontendRoot, "server-dist");
 
 if (!fs.existsSync(backendDist)) {
   console.error("Backend dist not found at", backendDist);
-  console.error("Run: npm run build --prefix ../backend");
   process.exit(1);
 }
 
@@ -28,4 +27,4 @@ await build({
   logLevel: "info",
 });
 
-console.log("Bundled API -> frontend/server-dist/handler.cjs");
+console.log("Bundled API -> server-dist/handler.cjs");

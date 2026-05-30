@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { Readable } from "node:stream";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
@@ -12,7 +13,16 @@ let expressApp: ExpressApp | null = null;
 function getExpressApp(): ExpressApp {
   if (!expressApp) {
     const require = createRequire(import.meta.url);
-    const handlerPath = path.join(process.cwd(), "server-dist", "handler.cjs");
+    const candidates = [
+      path.join(process.cwd(), "server-dist", "handler.cjs"),
+      path.join(process.cwd(), "frontend", "server-dist", "handler.cjs"),
+    ];
+
+    const handlerPath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!handlerPath) {
+      throw new Error(`API bundle not found (cwd=${process.cwd()})`);
+    }
+
     const mod = require(handlerPath);
     expressApp = (mod.default ?? mod) as ExpressApp;
   }
