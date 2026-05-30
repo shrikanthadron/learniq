@@ -1,13 +1,4 @@
 {
   "installCommand": "npm install && npm install --prefix ../backend",
-  "buildCommand": "npm run build:vercel",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" }
-  ],
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 30,
-      "includeFiles": "server-dist/**"
-    }
-  }
+  "buildCommand": "npm run build:vercel"
 }

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { build } from "esbuild";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.join(__dirname, "..");
@@ -14,5 +15,17 @@ if (!fs.existsSync(backendDist)) {
 }
 
 fs.rmSync(target, { recursive: true, force: true });
-fs.cpSync(backendDist, target, { recursive: true });
-console.log("Copied backend dist -> frontend/server-dist/");
+fs.mkdirSync(target, { recursive: true });
+
+await build({
+  entryPoints: [path.join(backendDist, "app.js")],
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  outfile: path.join(target, "handler.cjs"),
+  format: "cjs",
+  external: ["@prisma/client", "@prisma/client/*", ".prisma/*"],
+  logLevel: "info",
+});
+
+console.log("Bundled API -> frontend/server-dist/handler.cjs");
